@@ -1,13 +1,15 @@
 import * as ttc from './types';
 
-export const startingFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - - 0 1";
-
 export function inBounds(key: ttc.Key) {
     return key && key.every(k => k >= 1 && k <= 8);
 }
 
 export function opposite(color: ttc.Color): ttc.Color { 
     return color === 'black' ? 'white' : 'black';
+}
+
+export function sameKey(key1: ttc.Key, key2: ttc.Key): boolean {
+    return key1[0] === key2[0] && key1[1] === key2[1];
 }
 
 function incrementBlinks(blinks: ttc.Blinks, piece: ttc.Piece) {
@@ -34,12 +36,12 @@ function charToPiece(c : string): ttc.Piece {
     }
 }
 
-function toKey(sq: string): ttc.Key {
+export function toKey(sq: string): ttc.Key {
     return [sq.charCodeAt(0) - 'a'.charCodeAt(0) + 1,
         sq.charCodeAt(1) - '0'.charCodeAt(0)];
 }
 
-function toCoord(key: ttc.Key): string {
+export function toCoord(key: ttc.Key): string {
     return `${String.fromCharCode(
         'a'.charCodeAt(0) + key[0] - 1)}${
             String.fromCharCode(
@@ -56,7 +58,7 @@ export class Board {
     halfmoves: number;
     fullmoves: number;
 
-    static fromFEN(fen: string = startingFEN): Board {
+    static fromFEN(fen: string): Board {
         const board = new Board();
 
         const records = fen.split(' ');
@@ -236,11 +238,35 @@ export class Board {
 
     copy(): Board {
         const board = new Board();
-
+        
         board.turn = this.turn;
-        board.squares = this.squares;
-        board.castling = this.castling;
+        
+        board.squares = new Map();
+
+        for(let x = 1; x <= 8; x++) {
+            for(let y = 1; y <= 8; y++) {
+                const c = toCoord([x, y]);
+                const sq = this.squares.get(c);
+
+                board.squares.set(c, {
+                    blinks: new Map(sq.blinks),
+                    piece: sq.piece
+                })
+            }
+        }
+
+        board.castling = {
+            short: {...this.castling.short},
+            long: {...this.castling.long}
+        };
+
         board.enpassant = this.enpassant;
+
+        board.killer = this. killer;
+
+        board.halfmoves = this.halfmoves;
+
+        board.fullmoves = this.fullmoves;
 
         return board;
     }
@@ -250,7 +276,7 @@ export class Board {
             !this.squares.get(toCoord(key)).piece;
     }
 
-    basicDestsOf(orig: ttc.Key): ttc.Key[] {
+    basicDests(orig: ttc.Key): ttc.Key[] {
         const [x0, y0] = orig;
         const piece = this.squares.get(toCoord(orig)).piece;
 
@@ -350,9 +376,13 @@ export class Board {
             }
 
             const capscan = (target: ttc.Key) => {
-                if(!this.isEmpty(target) || 
-                    this.enpassant === target[0])
-                    nearscan([target]);
+                if(!inBounds(target)) return;
+
+                if(this.squares.get(toCoord(target))?.piece?.color  
+                    === opposite(this.turn) || 
+                    (y0 === (piece.color === 'white' ? 5 : 4) &&
+                        this.enpassant === target[0]))
+                    dests.push(target);
             }
 
             capscan([x0 - 1, y0 + dir]);
@@ -366,26 +396,28 @@ export class Board {
         if(!move.blinks.every(sq => {
             if(!inBounds(sq)) return false;
 
-            if(sq[0] === move.dest[0] &&
-               sq[1] === move.dest[1])
-                sq = move.orig;
-
             const blink = this.squares.get(toCoord(sq)).piece;
 
             return blink && blink.color === this.turn 
                 && blink.role !== 'king' && 
                 (!blink.tapped || 
-                    (blink.tapped.target === sq &&
-                        blink.tapped.role === blink.role))
-            }))
-            return false;
+                    (sameKey(blink.tapped.target, 
+                        sameKey(sq, move.orig) ? move.dest : sq) &&
+                    blink.tapped.role === (
+                        (blink.role === 'pawn' && 
+                        sameKey(sq, move.orig) &&
+                        move.target) ?
+                        move.target : blink.role)
+                    )
+                )
+            })) return false;
 
         if(!inBounds(move.orig)) return false;
 
         const piece = this.squares.get(toCoord(move.orig)).piece;
 
         if(piece) {
-            return this.basicDestsOf(move.orig).some(dest =>
+            return this.basicDests(move.orig).some(dest =>
                     dest[0] === move.dest[0] &&
                     dest[1] === move.dest[1]) &&
                 (!move.target || 
@@ -393,7 +425,7 @@ export class Board {
                     ['queen', 'rook', 'bishop', 'knight']
                         .includes(move.target) &&
                     move.dest[1] === 
-                        (piece.color  === 'white' ? 1 : 8)));
+                        (piece.color  === 'white' ? 8 : 1)));
         }
 
         if(move.dest) {
@@ -458,8 +490,8 @@ export class Board {
                 move.target ? basicTarget : piece;
 
             if(piece.role === 'pawn' &&
-                move.dest === [this.enpassant, 
-                this.turn === 'white' ? 6 : 3]) {
+                move.dest[0] === this.enpassant && 
+                move.dest[1] === (this.turn === 'white' ? 6 : 3)) {
                 this.squares.get(toCoord([move.dest[0], move.orig[1]]))
                     .piece = null;
             }
@@ -500,14 +532,11 @@ export class Board {
             if(move.dest) {
                 const piece = this.squares.get(toCoord(move.dest)).piece;
                 
-                if(piece.role === 'pawn') {
-                    this.halfmoves = 0;
-                } else {
-                    this.halfmoves++;
+                this.squares.get(toCoord(move.orig)).piece = {
+                    role: move.target ?? piece.role,
+                    color: piece.color
                 }
 
-                this.squares.get(toCoord(move.orig)).piece = piece;
-                
                 this.squares.get(toCoord(move.dest)).piece = {
                     role: piece.role,
                     color: piece.color,
@@ -515,6 +544,12 @@ export class Board {
                         target: move.orig,
                         role: move.target ?? piece.role
                     }
+                }
+
+                if(piece.role === 'pawn') {
+                    this.halfmoves = 0;
+                } else {
+                    this.halfmoves++;
                 }
             } else {
                 const k = this.squares.get(toCoord(move.orig))
@@ -529,6 +564,9 @@ export class Board {
         }
 
         move.blinks.forEach(key => {
+            if(sameKey(key, move.orig)) 
+                key = move.dest;
+
             const piece = this.squares.get(toCoord(key)).piece;
             
             this.squares.get(toCoord(key)).piece = null;
@@ -565,12 +603,91 @@ export class Board {
 
         if(!dream.makeMove(move))
             return false; 
+        
+        const castle: ttc.Key = (
+            this.squares.get(toCoord(move.orig))?.piece?.role === 'king'
+            && move.orig[1] === move.dest[1] 
+            && Math.abs(move.orig[0] - move.dest[0]) === 2) ?
+            [(move.orig[0] + move.dest[0]) >> 1, move.orig[1]] : null;
 
         return ![...dream.squares]
             .filter(([_, square]) => square.piece?.color === dream.turn)
-            .flatMap(([coord, _]) => dream.basicDestsOf(toKey(coord)))
-            .some(dest => (piece => piece.tapped || 
-                    (piece.role === 'king' && dream.isResolved(dream.turn))
+            .flatMap(([coord, _]) => dream.basicDests(toKey(coord)))
+            .some(dest => (piece => piece?.tapped || 
+                    (piece?.role === 'king' && dream.isResolved(dream.turn))
+                )(dream.squares.get(toCoord(dest)).piece) || 
+                    (castle && sameKey(dest, castle)));
+    }
+
+    legalDests(orig: ttc.Key, blinks: ttc.Key[]): ttc.Key[] {
+        const piece = this.squares.get(toCoord(orig))?.piece;
+        
+        if(!piece) return [];
+
+        const target: ttc.Role = (piece.role === 'pawn' && 
+            orig[1] === (piece.color === 'white' ? 7 : 2))? 
+            (piece.tapped?.role ?? 'queen') : null;
+
+        return this.basicDests(orig)
+            .filter(dest => this.isLegal({
+                orig, dest, target, blinks
+            }))
+    }
+
+    legalTaps(orig: ttc.Key, blinks: ttc.Key[]): ttc.Key[] {
+        if(!this.isEmpty(orig)) return [];
+        
+        return [...this.squares].filter(([coord, _]) => 
+            this.isLegal({orig, dest: toKey(coord), blinks,
+                target: this.squares.get(coord)?.piece?.role === 'pawn' ?
+                'queen' : null}))
+                .map(([coord, _]) => toKey(coord));
+    }
+
+    hasLegalPlays(blinks: ttc.Key[]): boolean {
+        return [...this.squares].some(([coord, _]) => 
+            this.legalDests(toKey(coord), blinks))
+    }
+
+    hasLegalTaps(blinks: ttc.Key[]): boolean {
+        return [...this.squares].some(([coord, _]) => 
+            this.legalTaps(toKey(coord), blinks))
+    }
+
+    hasLegalMoves(blinks: ttc.Key[]): boolean {
+        return this.hasLegalPlays(blinks) ||
+            this.hasLegalTaps(blinks);
+    }
+
+    canBlink(orig: ttc.Key, blinks: ttc.Key[]): boolean {
+        return inBounds(orig) &&
+            this.squares.get(toCoord(orig))?.piece?.color === this.turn &&
+            this.hasLegalMoves(blinks.concat([orig]));
+    }
+
+    inCheck(): boolean {
+        const dream = this.copy();
+
+        dream.turn = opposite(this.turn);
+
+        return ![...dream.squares]
+            .filter(([_, square]) => square.piece?.color === dream.turn)
+            .flatMap(([coord, _]) => dream.basicDests(toKey(coord)))
+            .some(dest => (piece => piece?.tapped || 
+                    (piece?.role === 'king' && dream.isResolved(dream.turn))
                 )(dream.squares.get(toCoord(dest)).piece));
+    }
+
+    result(): ttc.Color | 'draw' | 'none' {
+        const last = opposite(this.turn);
+
+        if(this.killer === last && this.isResolved(last))
+            return last; 
+
+        if(this.hasLegalMoves([])) return 'none';
+
+        if(this.inCheck()) return last;
+
+        return 'draw';
     }
 }
