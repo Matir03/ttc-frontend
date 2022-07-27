@@ -33,7 +33,7 @@ setView(h('div#root', [
 ]));
 
 const socket: Socket<ServerToClientEvents, ClientToServerEvents>
-    = io('ws://' + SOCKET_ADDR);
+    = io(SOCKET_ADDR);
 
 socket.on("connect", () => {
     console.log("Connected!");
