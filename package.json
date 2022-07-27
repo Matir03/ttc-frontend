@@ -5,7 +5,7 @@
   "main": "dist/main.js",
   "scripts": {
     "dev": "webpack --mode=development",
-    "prod": "webpack --mode=production",
+    "build": "webpack --mode=production",
     "serve": "http-server"
   },
   "dependencies": {

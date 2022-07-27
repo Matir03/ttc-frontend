@@ -16,9 +16,12 @@ const patch = init([
     styleModule,
     eventListenersModule
 ]);
-window['h'] = h;
-window['patch'] = patch;
-window['Board'] = Board;
+
+if(process.env.NODE_ENV === "development") {
+    window['h'] = h;
+    window['patch'] = patch;
+    window['Board'] = Board;
+}
 
 let root = toVNode(document.getElementById("root"));
 const setView = (node: VNode) => root = patch(root, node);
