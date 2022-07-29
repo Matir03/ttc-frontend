@@ -1,11 +1,11 @@
 import Chessground from './chessground';
-import { ReceivedGameState, GameEvent, GameAction, 
-    MakeMove, PerformMove } from './commontypes';
+import { ReceivedGameState, Chat, Action, ChatAction,
+    MakeMove, PerformMove, ChatEvent } from './commontypes';
 import { Move } from './ttc/types';
 import { attributesModule, classModule, eventListenersModule, h, 
     init, propsModule, styleModule, toVNode, VNode } from 'snabbdom';
 import { Api } from './chessground/api';
-import { files, ranks, Color, Key, MoveMetadata, Role, Piece } from './chessground/types';
+import { Color, Key, MoveMetadata, Role, Piece } from './chessground/types';
 import { PieceSelector } from './selection';
 import { opposite, pieceToChar, charToPiece } from './chessground/util';
 import { unselect } from './chessground/board';
@@ -86,9 +86,8 @@ function unblink(cg: Api, key: Key, piece: Piece) {
 export class GameClient {
 
     pname: string;
-    state: ReceivedGameState;
     game: Game;
-    emit: (action: GameAction) => void;
+    emit: (action: Action) => void;
 
     cg: Api;
     cgNode: HTMLElement;
@@ -103,14 +102,20 @@ export class GameClient {
     oldLastMove: Key[];
     selected: Key;
 
+    chat: Chat;
+    chatUpdated: boolean;
+    
     ui: UIElement[];
 
     constructor(pname: string, 
-        emit: (action: GameAction) => void) {
+        emit: (action: Action) => void) {
         
         this.pname = pname;
         
         this.emit = action => {
+            if(action.kind === 'MakeMove') {
+                this.game.makeMove((action as MakeMove).move);
+            }
             this.updateView();
             emit(action);
         }
@@ -161,14 +166,12 @@ export class GameClient {
                                 blinks: this.cg.getBlinks().map(toKey)
                             };
                             
-                            this.emit(new MakeMove(move));
-
                             unblink(this.cg, key, {
                                 role: sr,
                                 color: this.color
                             });
 
-                            this.updateView();
+                            this.emit(new MakeMove(move));
                         },
                         () => {
                             this.selecting = false;
@@ -191,9 +194,15 @@ export class GameClient {
         
         this.selecting = false;
 
+        this.chat = [];
+        this.chatUpdated = false;
+
         this.ui = [
             {vnode: h('div'), update: () => this.blinkPanel('white')},
             {vnode: h('div'), update: () => this.blinkPanel('black')},
+            {vnode: h('div'), update: () => this.movelist()},
+            {vnode: h('div'), update: () => this.controls()},
+            {vnode: h('div'), update: () => this.chatbox()},
         ];
     }
 
@@ -232,10 +241,9 @@ export class GameClient {
                 this.color,
                 sr => {
                     move.target = sr;
-                    this.emit(new MakeMove(move)); 
                     promote(this.cg, dest, sr);
                     this.cg.endTurn();
-                    this.updateView();
+                    this.emit(new MakeMove(move));
                 },
                 () => {
                     this.cg.state.pieces.set(orig, piece);
@@ -254,14 +262,14 @@ export class GameClient {
                 }
             );
         } else {
-            this.emit(new MakeMove(move));
             this.cg.endTurn();
-            this.updateView();
+            this.emit(new MakeMove(move));
         }
     }
 
     onSelect(key: Key) {
-        if(this.cg.state.turnColor === this.other ||
+        if(this.game.ply !== this.game.moves.length ||
+            this.cg.state.turnColor === this.other ||
             (this.cg.state.selected && !this.selected)) return;
 
         const piece = this.cg.state.pieces.get(key);
@@ -310,9 +318,8 @@ export class GameClient {
                         sr => { 
                             move.target = sr;
                             
-                            this.emit(new MakeMove(move));
                             tap(this.cg, orig, key, sr);  
-                            this.updateView();
+                            this.emit(new MakeMove(move));
                         },
                         () => {
                             this.selecting = false;
@@ -323,9 +330,8 @@ export class GameClient {
                 } else { 
                     if(!this.game.board.isLegal(move))
                         return;
-                    this.emit(new MakeMove(move)); 
                     tap(this.cg, this.selected, key);   
-                    this.updateView();
+                    this.emit(new MakeMove(move));
                 }                     
 
                 this.selected = null;
@@ -350,8 +356,18 @@ export class GameClient {
     setDestsMap() {
         const blinks = this.cg.getBlinks().map(toKey);
 
+        if(this.game.ply !== this.game.moves.length) {
+            this.cg.set({
+                movable: {color: undefined}
+            });
+
+            return;
+        }
+
         this.cg.set({
             movable: {
+                color: this.color,
+
                 dests: coord =>  
                     (this.game.board.isEmpty(toKey(coord)) ?
                     this.game.board.legalTaps(toKey(coord), blinks) :
@@ -366,8 +382,6 @@ export class GameClient {
     }
 
     setState(state: ReceivedGameState) {
-        this.state = state;
-
         this.color = state.white === this.pname?
             "white" : "black";
 
@@ -375,7 +389,20 @@ export class GameClient {
 
         this.game = new Game(state.game);
 
+        this.chat = state.chat;
+        this.chatUpdated = true;
+
         this.syncCg();
+    }
+
+    jumpTo(ply: number) {
+        if(ply < 0 || ply > this.game.moves.length) return;
+
+        this.game.gotoPly(ply);
+
+        this.syncCg();
+
+        this.updateView();
     }
 
     syncCg() {
@@ -402,17 +429,23 @@ export class GameClient {
                 });
         });
 
-        const lastMove = this.state.game.at(-1);
+        const lastMove = this.game.ply ?
+            this.game.moves.at(this.game.ply - 1) : 
+            null;
 
         if(lastMove) {
             this.cg.state.lastMove = [toCoord(lastMove.orig) as Key];
 
             if(lastMove.dest) 
                 this.cg.state.lastMove.push(toCoord(lastMove.dest) as Key);
+        } else {
+            this.cg.state.lastMove = undefined;
         }
+        
+        this.cg.redrawAll();
     }
 
-    update(event: GameEvent) {
+    update(event: Action) {
         console.log(`Receiving game event ${JSON.stringify(event)}`);
 
         if(event.kind === "PerformMove") {
@@ -420,14 +453,15 @@ export class GameClient {
 
             const move = (event as PerformMove).move;
 
+            if(color === this.color) return;
+
+            this.jumpTo(this.game.ply);
+
             if(!this.game.makeMove(move)) {
                 console.log("Illegal move!");
                 return;
             }
 
-            this.updateView();
-            
-            if(color === this.color) return;
 
             this.oldLastMove = [toCoord(move.orig) as Key].concat(
                 move.dest ? toCoord(move.dest) as Key : []);
@@ -453,7 +487,14 @@ export class GameClient {
                 tap(this.cg, toCoord(move.orig) as Key, 
                     toCoord(move.dest) as Key, move.target);
             }
+        } else if(event.kind === "ChatEvent") {
+            const msg = (event as ChatEvent).message;
+
+            this.chat.push(msg);
+            this.chatUpdated = true;
         }
+
+        this.updateView();
     }
 
     blinkPanel (color: Color): VNode {
@@ -513,6 +554,94 @@ export class GameClient {
         )
     }
 
+    movelist() {
+        return h('div#movelist', {
+            hook: {
+                postpatch: () => {
+                    document.querySelector('#movelist .chosen')
+                        ?.scrollIntoView({block: 'nearest'});
+                }
+            }
+        }, [
+            h('table', this.game.moves_plain.filter((_, i) => i % 2 === 0)
+                .map((move, i) => h('tr', [
+                    h('td.movenum', i + 1 + '.'),
+                    h('td.move', {
+                        class: {chosen: i*2 + 1 === this.game.ply},
+                        on: {click: () => this.jumpTo(i*2 + 1)}
+                    }, move),
+                    h('td.move', {
+                        class: {chosen: i*2 + 2 === this.game.ply},
+                        on: {click: () => this.jumpTo(i*2 + 2)}
+                    },
+                        this.game.moves_plain[i*2 + 1] ?? '')
+                ]))
+            )
+        ]);
+    }
+
+    controls() {
+        let botLeft = "Offer Draw",
+            botRight = "Resign";
+
+        return h('div#controls', [
+            h('button.toprow', {
+                on: {click: () => this.jumpTo(0)}
+            }, '<<'),
+            h('button.toprow', {
+                on: {click: () => this.jumpTo(this.game.ply - 1)}
+            }, '<'),
+            h('button.toprow', {
+                on: {click: () => this.jumpTo(this.game.ply + 1)}
+            }, '>'),
+            h('button.toprow', {
+                on: {click: () => this.jumpTo(this.game.moves.length)}
+            }, '>>'),
+            h('button.botrow', {
+                on: {click: () => this.emit({kind: botLeft})}
+            }, botLeft),
+            h('button.botrow', {
+                on: {click: () => this.emit({kind: botRight})}
+            }, botRight)
+        ])
+    }
+
+    chatbox() {
+        const scroll = () => {
+            if(!this.chatUpdated) return;
+            this.chatUpdated = false;
+            const box = document.getElementById('chat-box');
+            box.scrollTop = box.scrollHeight;
+        }
+
+        return h('div#chat', {
+            hook: {
+                postpatch: () => scroll()
+            }
+        }, [
+            h('div#chat-box', this.chat.map(msg => 
+                msg.sender ? 
+                    h('div.message', [
+                        h('span.sender', `${msg.sender}: `),
+                        h('span.text', msg.text),
+                    ]) :
+                    h('div.message', [h('span.notice', msg.text)])
+            )),
+            h('input', {
+                on: {
+                    keyup: (e: KeyboardEvent) => {
+                        const target = e.target as HTMLInputElement;
+
+                        if(e.key === "Enter" && target.value) {
+                            this.emit(new ChatAction(target.value));
+                            target.value = '';
+                        }
+                    }
+                }
+            }),
+        ]);
+    }
+
     updateView() {
         this.setDestsMap();
         
@@ -521,13 +650,30 @@ export class GameClient {
     }
 
     view(): VNode { 
+        document.onkeydown = (e: KeyboardEvent) => {
+            if(e.key === "ArrowUp") {
+                e.preventDefault();
+                this.jumpTo(0);
+            } else if(e.key === "ArrowLeft") {
+                e.preventDefault();
+                this.jumpTo(this.game.ply - 1);
+            } else if(e.key === "ArrowRight") {
+                e.preventDefault();
+                this.jumpTo(this.game.ply + 1);
+            } else if(e.key === "ArrowDown") {
+                e.preventDefault();
+                this.jumpTo(this.game.moves.length);
+            }
+        }
+        
         return h('div#root.game', {
             hook: {
                 insert: (vnode) => {
                     vnode.elm.appendChild(this.cgNode);
                     this.updateView();
                 }
-            }
+            },
+           
         }, this.ui.map(elm => elm.vnode = elm.update()));
     }
 }

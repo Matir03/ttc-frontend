@@ -17,16 +17,20 @@ const patch = init([
     eventListenersModule
 ]);
 
+let lobby: Lobby,
+    game: GameClient;
+
 if(process.env.NODE_ENV === "development") {
     window['h'] = h;
     window['patch'] = patch;
     window['Board'] = Board;
+    window['game'] = game;
 }
 
 let root = toVNode(document.getElementById("root"));
 const setView = (node: VNode) => root = patch(root, node);
 
-let pname = prompt("Enter a player name");
+let pname = prompt("Enter a player name"); 
 
 setView(h('div#root', [
     h('h1', `Connecting to server at ${SOCKET_ADDR}`)
@@ -37,7 +41,20 @@ const socket: Socket<ServerToClientEvents, ClientToServerEvents>
 
 socket.on("connect", () => {
     console.log("Connected!");
-    socket.emit("player_join", pname);
+
+    if(!pname) pname = "anon" + socket.id;
+
+    game = new GameClient(pname, action => {
+        console.log(`Emitting game action ${JSON.stringify(action)}`)
+        socket.emit("game_action", action);
+    });
+
+    lobby = new Lobby(pname, action => {
+        console.log(`Emitting lobby action ${JSON.stringify(action)}`);
+        socket.emit("lobby_action", action);
+    });
+
+   socket.emit("player_join", pname);
 });
 
 socket.on("connect_error", (err) => {
@@ -52,11 +69,6 @@ socket.on("disconnect", (reason) => {
     }
 });
 
-const lobby = new Lobby(pname, action => {
-    console.log(`Emitting lobby action ${JSON.stringify(action)}`);
-    socket.emit("lobby_action", action);
-});
-
 socket.on("join_lobby", (state) => {
     console.log(`Joining lobby with state
         ${JSON.stringify(state)}`);
@@ -68,11 +80,6 @@ socket.on("lobby_event", (event) => {
     setView(lobby.view());
 });
 
-const game = new GameClient(pname, action => {
-    console.log(`Emitting game action ${JSON.stringify(action)}`)
-    socket.emit("game_action", action);
-});
-window['game'] = game;
 
 socket.on("join_game", (state) => {
     console.log(`Joining game with state

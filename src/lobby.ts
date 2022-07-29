@@ -1,4 +1,4 @@
-import { colors, LobbyAction, LobbyState, LobbyEvent, RemoveSeek,
+import { colors, Action, LobbyState, RemoveSeek,
     SeekColor, MakeSeek, MappedLobbyState, AddSeek, DeleteSeek, AcceptSeek } from './commontypes';
 import { h, VNode } from 'snabbdom';
 
@@ -8,10 +8,10 @@ export class Lobby {
     state: MappedLobbyState;
     curSeekColor: SeekColor;
 
-    emit: (action: LobbyAction) => void;
+    emit: (action: Action) => void;
 
     constructor(pname: string, 
-        emit: (action: LobbyAction) => void) {
+        emit: (action: Action) => void) {
 
         this.pname = pname;
         this.emit = emit;
@@ -22,7 +22,7 @@ export class Lobby {
         this.state = new MappedLobbyState(state);    
     }
 
-    update(event: LobbyEvent) {
+    update(event: Action) {
         console.log(`Receiving lobby event ${JSON.stringify(event)}`);
         
         if(event.kind === "AddSeek") {
@@ -48,7 +48,7 @@ export class Lobby {
     }
 
     seekTable(): VNode {
-        return h('table', {style: {float: 'left'}},
+        return h('table#seeks', {style: {float: 'left'}},
             [h('tr', [
                 h('th', "Player"),
                 h('th', "Color"),

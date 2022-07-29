@@ -8,16 +8,16 @@ let timeout: NodeJS.Timeout,
     lastKey: Key;
 
 export function handleHover(s: State, e: MouchEvent) {
-    if(e.type !== 'mousemove' || e.buttons) {
-        unhover(s);
-        lastKey = null;
-        return;
-    }
-
     const bounds = s.dom.bounds(),
         position = util.eventPosition(e)!,
         orig = board.getKeyAtDomPos(position, board.whitePov(s), bounds),
         piece = s.pieces.get(orig);
+
+    if(e.type !== 'mousemove' || e.buttons) {
+        unhover(s);
+        lastKey = orig;
+        return;
+    }
 
     if(lastKey === orig) return;
 

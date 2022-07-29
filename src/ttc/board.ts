@@ -92,7 +92,7 @@ export class Board {
                     piece.tapped =
                         tapped.length === 3 ? 
                         {
-                            role: ttc.sym2role[tapped[0]],
+                            role: ttc.sym2role[tapped.charAt(0).toUpperCase()],
                             target: toKey(tapped.slice(1))
                         } :
                         {
@@ -202,7 +202,8 @@ export class Board {
                             square.blinks.get(c)))
                         .join('');
 
-                    if(blinkstr) entry += `[${blinkstr}]`;
+                    if(blinkstr) 
+                        entry = `${entry ? entry : '1'}[${blinkstr}]`;
 
                     if(entry) {
                         if(nulls) rank += String.fromCharCode(nulls + 
@@ -798,4 +799,70 @@ export class Board {
 
         this.blinks.get(pname).set(sqname, ksq - 1);
     }
+
+    moveToString(move: ttc.Move): string {
+        const roleToLetter = (role: ttc.Role) => {
+            const letter = ttc.role2sym[role];
+            return letter === 'P' ? '' : letter;
+        }
+
+        const mainmove = (() => {
+            const orig = toCoord(move.orig);
+        
+            if(!move.dest) {
+                return `${roleToLetter(move.target)}@${orig}`;
+            }
+
+            const dest = toCoord(move.dest);
+
+            const piece = this.squares.get(orig)?.piece;
+
+            if(!piece) {        
+                const piece = this.squares.get(dest)?.piece;
+
+                const pieceLetter = roleToLetter(piece?.role);
+
+                const promo = pieceLetter === '' && move.target && move.target !== 'pawn' ? 
+                    '=' + roleToLetter(move.target) : '';
+
+                return `${pieceLetter}${dest}@${orig}${promo}`;
+            }
+
+            const pieceLetter = roleToLetter(piece.role);
+
+            if(pieceLetter === 'K' && orig[0] === 'e') {
+                if(dest[0] === 'g') return 'O-O';
+                if(dest[0] === 'c') return 'O-O-O';
+            }
+
+            const imposters = [...this.squares].filter(([coord, sq]) =>
+                coord !== orig && sq.piece &&
+                pieceToChar(sq.piece) === pieceToChar(piece) &&
+                this.isLegal({
+                    orig: toKey(coord), 
+                    dest: move.dest,
+                    target: move.target,
+                    blinks: move.blinks
+                }));
+
+            const capture = this.squares.get(dest)?.piece || 
+                (pieceLetter === '' && orig[0] !== dest[0]) ? 'x' : '';
+
+            const disambig = imposters.length || (capture && !pieceLetter) ?
+                (imposters.some(([coord, _]) => coord[0] === orig[0]) ?
+                (imposters.some(([coord, _]) => coord[1] === orig[1]) ?
+                    `${orig[0]}${orig[1]}` :
+                    `${orig[1]}`) :
+                    `${orig[0]}`) : '';
+
+            const promo = move.target ? '=' + roleToLetter(move.target) : ''; 
+
+            return `${pieceLetter}${disambig}${capture}${dest}${promo}`;
+        })();
+
+        const blinks = move.blinks.map(key => toCoord(key)).join(',');
+        const blinkmove = blinks ? `*${blinks}` : '';
+
+        return `${mainmove}${blinkmove}`;
+   }
 }

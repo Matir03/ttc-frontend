@@ -253,7 +253,7 @@ function posZIndex(pos: cg.Pos, asWhite: boolean): string {
 }
 
 function pieceNameOf(piece: cg.Piece): string {
-  return `${piece.quantity > 1 ? 'quantified' : ''} ${piece.tapped 
+  return `${piece.quantity > 1 ? 'quantified' : ''}${piece.tapped 
     ? 'tapped ' : ''}${piece.blinking ? 'blinked ' : ''}${
       piece.color} ${piece.role}`;
 }

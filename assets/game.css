@@ -1,22 +1,33 @@
-.game {
-    display: grid;
-    grid-template-areas: 
-        'clock-top blink-top . movelist'
-        'board board board movelist'
-        'board board board controls'
-        'board board board .'
-        'board board board chat'
-        'clock-bot blink-bot . chat';
+body {
+    background-color: #463434;
 }
 
-/* partly borrowed from lichess pockets */
+.game {
+    display: grid;
+    grid-template-areas:
+        '. blink-top clock-top . movelist . .'
+        '. board         board . movelist . .'
+        '. board         board . controls . .'
+        '. board         board . chat  chat .'
+        '. blink-bot 3lock-bot . chat  chat .';
+}
+
 .blink {
     display: flex;
     flex-direction: row;
     width: calc(var(--cg-width) * 5 / 8);
     height: calc(var(--cg-height) / 8);
-    padding: 10px;
     position: relative;
+}
+
+.blink-top {
+    grid-area: blink-top;
+    padding-bottom: 20px;
+}
+
+.blink-bot {
+    grid-area: blink-bot;
+    padding-top: 20px;
 }
 
 .blink-wrap {
@@ -37,6 +48,7 @@
     opacity: 0.3;
 }
 
+/* partly borrowed from lichess pockets */
 .blink piece.active::after,
 .dream piece.quantified::after {
     content: attr(data-nb);
@@ -70,22 +82,138 @@
     grid-area: clock-bot;
 }
 
-.blink-top {
-    grid-area: blink-top;
-}
-
-.blink-bot {
-    grid-area: blink-bot;
-}
-
 #movelist {
     grid-area: movelist;
+    width: 100%;
+    height: 300px;
+    overflow: hidden;
+    overflow-y: auto;
+    background-color: lightcyan;
+}
+
+#movelist table {
+    width: 100%;
+    font-family: arial, sans-serif;
+    border-collapse: collapse;
+}
+
+#movelist tr:nth-child(even) {
+    background-color: lightseagreen;
+}
+
+#movelist tr:nth-child(odd) {
+    background-color: lightskyblue;
+}
+
+#movelist tr {
+    width: 100%;
+    height: 30px;
+}
+
+#movelist td.move.chosen,
+#movelist td.move.chosen:hover {
+    background-color: yellow;
+}
+
+#movelist td {
+    border: 1px solid #dddddd;
+    text-align: center;
+}
+
+#movelist td.movenum {
+    width: 10%;
+}
+
+#movelist td.move {
+    width: 45%;
+    max-width: 10em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#movelist td.move:hover {
+    background-color: lightyellow;
+    cursor: pointer;
+    text-overflow: clip;
+    white-space: normal;
+    word-break: break-word;
 }
 
 #controls {
     grid-area: controls;
+    display: grid;
+    grid-template-rows: repeat(2, 1fr);
+    grid-template-columns: repeat(4, 1fr);
+    height: fit-content;
+    align-self: top;
+}
+
+#controls button {
+    border-radius: 5px;
+    height: 30px;
+    margin: 2px;
+    cursor: pointer;
+    font-size: larger;
+    background-color: #888;
+}
+
+#controls button:hover {
+    background-color: orange;
+}
+
+#controls button.toprow {
+    grid-row: 1;
+    grid-column: span 1;
+}
+
+#controls button.botrow {
+    grid-row: 2;
+    grid-column: span 2;
 }
 
 #chat {
     grid-area: chat;
+    width: 100%;
+    max-width: 600px;
+    height: calc(var(--cg-height) * 10 / 8 - 338px);
+    padding: 5px;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+#chat-box {
+    height: 90%;
+    overflow: hidden;
+    overflow-y: auto;
+    background-color: rgb(231, 221, 202);
+    border-radius: 10px;
+    padding: 5px;
+    margin-bottom: 5px;
+}
+
+#chat input {
+    width: 100%;
+    height: 1.2em;
+    border: 1px solid gray;
+    border-radius: 5px;
+    padding: 5px;
+}
+
+#chat .message {
+    margin-bottom: 5px;
+    word-wrap: break-word;
+}
+
+#chat .message .sender {
+    font-weight: bold;
+    color: darkblue;
+    padding-right: 3px;
+}
+
+#chat .message .text {
+    color: black;
+}
+
+#chat .message .notice {
+    color: red;
+    font-weight: bold;
 }
