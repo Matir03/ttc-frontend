@@ -1,15 +1,105 @@
-table#seeks {
+.lobby {
+    display: grid;
+    width: calc(100vw - 20px);
+    height: calc(100vh - 50px);
+    grid-template: 
+        'incoming incoming games  games' 50%
+        'outgoing  players players chat' calc(50% - 80px)
+        'seekmaker players players chat' 80px
+        / 2fr 1fr 1fr 2fr;
+}
+
+.lobby .toplevel {
+    padding: 10px;
+}
+
+.lobby .scroll {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overflow-y: auto;
+    background-color: cyan;
+}
+
+.lobby table {
     font-family: arial, sans-serif;
     border-collapse: collapse;
     width: 100%;
 }
 
-#seeks td, #seeks th {
-    border: 1px solid #dddddd;
+.lobby td, .lobby th {
+    border-left: 2px solid #dddddd;
+    border-right: 2px solid #dddddd;
     text-align: left;
     padding: 8px;
 }
+
+.lobby th {
+    background-color: darkcyan;
+    position: sticky;
+    top: 0;
+}
+
+.lobby th::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 100%;
+    bottom: -1px;
+    border-bottom: 2px solid #dddddd;
+}
+
+.lobby tr:nth-child(even) {
+    background-color: lightskyblue;
+}
   
-#seeks tr:nth-child(even) {
-  background-color: #dddddd;
+.lobby tr:nth-child(odd) {
+    background-color: lightseagreen;
+}
+
+.lobby button {
+    border-radius: 5px;
+    cursor: pointer;
+    background-color: #888;
+}
+
+.lobby button:hover {
+    background-color: orange;
+}
+
+#incoming {
+    grid-area: incoming;
+}
+
+#games {
+    grid-area: games;
+}
+
+#players {
+    grid-area: players;
+}
+
+#outgoing {
+    grid-area: outgoing;
+}
+
+#seekmaker {
+    grid-area: seekmaker;
+}
+
+#seekmaker div {
+    display: flex;
+    justify-content: stretch;
+    height: 20px;
+    color: white;
+    font-size: large;
+}
+
+#seekmaker button {
+    width: 100%;
+    height: calc(100% - 20px);
+}
+
+.lobby #chat {
+    grid-area: chat;
 }

@@ -5,11 +5,14 @@ import { GameClient } from './gameclient';
 import { attributesModule, classModule, eventListenersModule, h, init, 
     propsModule, styleModule, toVNode, VNode } from 'snabbdom';
 import { ClientToServerEvents, ServerToClientEvents } from './commontypes';
-import { Board } from './ttc/board';
+
+console.log("The source code for this project is available at https://github.com/Matir03/time-travel-chess");
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 
-console.log("The source code for this project is available at https://github.com/Matir03/time-travel-chess");
+if(!isDevelopment) {
+    console.log = () => {};
+}
 
 const patch = init([
     attributesModule,
