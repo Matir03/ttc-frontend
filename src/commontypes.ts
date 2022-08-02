@@ -103,6 +103,8 @@ export interface ReceivedGameState {
 
     game: Move[];
     chat: Chat;
+
+    drawOffer: string;
 }
 
 export class MakeMove implements Action {
@@ -137,14 +139,11 @@ export class ChatEvent implements Action {
     constructor(public message: ChatMessage) {}
 }
 
-export class SpecialAction implements Action {
-    kind = "SpecialAction";
-
-    constructor(
-        public sender: string,
-        public action: string
-    ) {}
+export interface TaggedAction extends Action {
+    kind: string;
+    player: string;
 }
+
 export interface ServerToClientEvents {
     join_lobby:  (state: LobbyState) => void;
     join_game:   (state: ReceivedGameState)  => void;

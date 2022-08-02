@@ -43,6 +43,18 @@ export class Game {
         this.ply = newPly;
     }
 
+    canClaimDraw() {
+        const trimFEN = (fen: string) => 
+            fen.split(" ").slice(0, 4).join(" ");
+        const curFEN = trimFEN(this.fens[this.ply]);
+
+        return parseInt(this.fens[this.ply]
+            .split(' ').at(-2)) >= 100 ||
+            this.fens.filter(fen => 
+                trimFEN(fen) === curFEN).length >= 3 ||
+            this.board.canClaimDraw();     
+    }
+
     toJSON() {
         return this.moves;
     }

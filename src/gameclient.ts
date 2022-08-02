@@ -1,6 +1,6 @@
 import Chessground from './chessground';
 import { ReceivedGameState, Chat, Action, ChatAction,
-    MakeMove, PerformMove, ChatEvent } from './commontypes';
+    MakeMove, PerformMove, ChatEvent, TaggedAction, MakeSeek } from './commontypes';
 import { Move } from './ttc/types';
 import { attributesModule, classModule, eventListenersModule, h, 
     init, propsModule, styleModule, toVNode, VNode } from 'snabbdom';
@@ -105,6 +105,9 @@ export class GameClient {
     chat: Chat;
     chatUpdated: boolean;
     
+    status: string;
+    drawOffered: boolean;
+
     ui: UIElement[];
 
     constructor(pname: string, 
@@ -113,9 +116,16 @@ export class GameClient {
         this.pname = pname;
         
         this.emit = action => {
-            if(action.kind === 'MakeMove') {
-                this.game.makeMove((action as MakeMove).move);
+            switch(action.kind) {
+                case "MakeMove":
+                    this.game.makeMove((action as MakeMove).move);
+                    this.drawOffered = false;
+                    break;
+
+                case "Decline Draw":
+                    this.drawOffered = false;
             }
+
             this.updateView();
             emit(action);
         }
@@ -196,6 +206,9 @@ export class GameClient {
 
         this.chat = [];
         this.chatUpdated = false;
+
+        this.status = 'waiting';
+        this.drawOffered = false;
 
         this.ui = [
             {vnode: h('div'), update: () => this.blinkPanel('white')},
@@ -356,7 +369,8 @@ export class GameClient {
     setDestsMap() {
         const blinks = this.cg.getBlinks().map(toKey);
 
-        if(this.game.ply !== this.game.moves.length) {
+        if(this.game.ply !== this.game.moves.length ||
+            this.status !== 'playing') {
             this.cg.set({
                 movable: {color: undefined}
             });
@@ -392,6 +406,9 @@ export class GameClient {
         this.chat = state.chat;
         this.chatUpdated = true;
 
+        this.drawOffered = state.drawOffer === this.pname;
+        this.status = "playing";
+
         this.syncCg();
     }
 
@@ -411,7 +428,7 @@ export class GameClient {
             orientation: this.color,
             turnColor: this.game.board.turn,
             movable: {
-                color: this.color
+                color: this.color,
             }
         });
 
@@ -448,50 +465,68 @@ export class GameClient {
     update(event: Action) {
         console.log(`Receiving game event ${JSON.stringify(event)}`);
 
-        if(event.kind === "PerformMove") {
-            const color = (event as PerformMove).color;
+        switch(event.kind) {
+            case "PerformMove":
+                const color = (event as PerformMove).color;
 
-            const move = (event as PerformMove).move;
+                const move = (event as PerformMove).move;
 
-            if(color === this.color) return;
+                if(color === this.color) return;
 
-            this.jumpTo(this.game.ply);
+                this.jumpTo(this.game.ply);
 
-            if(!this.game.makeMove(move)) {
-                console.log("Illegal move!");
-                return;
-            }
-
-
-            this.oldLastMove = [toCoord(move.orig) as Key].concat(
-                move.dest ? toCoord(move.dest) as Key : []);
-            
-            move.blinks.forEach(key => 
-                this.cg.state.pieces.get(toCoord(key) as Key).blinking = true
-            )
-
-            if(!move.dest) {
-                unblink(this.cg, toCoord(move.orig) as Key, {
-                    role: move.target,
-                    color: this.other
-                });
-            } else if(this.cg.state.pieces.has(toCoord(move.orig) as Key)) {
-                this.cg.move(toCoord(move.orig) as Key, toCoord(move.dest) as Key);
-                
-                if(move.target) {
-                    promote(this.cg, toCoord(move.dest) as Key, move.target);
+                if(!this.game.makeMove(move)) {
+                    console.log("Illegal move!");
+                    return;
                 }
 
-                this.cg.endTurn();
-            } else {
-                tap(this.cg, toCoord(move.orig) as Key, 
-                    toCoord(move.dest) as Key, move.target);
-            }
-        } else if(event.kind === "ChatEvent") {
-            const msg = (event as ChatEvent).message;
+                this.oldLastMove = [toCoord(move.orig) as Key].concat(
+                    move.dest ? toCoord(move.dest) as Key : []);
+                
+                move.blinks.forEach(key => 
+                    this.cg.state.pieces.get(toCoord(key) as Key).blinking = true
+                )
 
-            this.chat.push(msg);
-            this.chatUpdated = true;
+                if(!move.dest) {
+                    unblink(this.cg, toCoord(move.orig) as Key, {
+                        role: move.target,
+                        color: this.other
+                    });
+                } else if(this.cg.state.pieces.has(toCoord(move.orig) as Key)) {
+                    this.cg.move(toCoord(move.orig) as Key, toCoord(move.dest) as Key);
+                    
+                    if(move.target) {
+                        promote(this.cg, toCoord(move.dest) as Key, move.target);
+                    }
+
+                    this.cg.endTurn();
+                } else {
+                    tap(this.cg, toCoord(move.orig) as Key, 
+                        toCoord(move.dest) as Key, move.target);
+                }
+            
+                break;
+
+            case "ChatEvent":
+                const msg = (event as ChatEvent).message;
+
+                this.chat.push(msg);
+                this.chatUpdated = true;
+
+                break;
+
+            case "GameEnd":
+                this.status = "ended";
+                break;
+
+            case "DrawOffered":
+                if((event as TaggedAction).player === this.pname) return;
+                
+                this.drawOffered = true;
+                break;
+
+            default: 
+                console.log("Unknown event type: " + event.kind);
         }
 
         this.updateView();
@@ -581,8 +616,22 @@ export class GameClient {
     }
 
     controls() {
-        let botLeft = "Offer Draw",
-            botRight = "Resign";
+        let botLeft: string,
+            botRight: string;
+
+        if(this.status === 'ended') {
+            botLeft = 'Exit Game';
+            botRight = 'Rematch';  
+        } else {
+            if(this.drawOffered) {
+                botLeft = 'Accept Draw';
+                botRight = 'Decline Draw';
+            } else {
+                botLeft = this.game.canClaimDraw() ? 
+                    'Claim Draw' : 'Offer Draw';
+                botRight = 'Resign';
+            }
+        }
 
         return h('div#controls', [
             h('button.toprow', {
