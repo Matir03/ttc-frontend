@@ -76,10 +76,44 @@ body {
 
 .clock-top {
     grid-area: clock-top;
+    padding-bottom: 20px;
 }
 
 .clock-bot {
     grid-area: clock-bot;
+    padding-top: 20px;
+}
+
+.clock {
+    width: fit-content;
+    height: calc(var(--cg-height) / 8);
+}
+
+.clock-wrap {
+    width: fit-content;
+    height: 100%;
+    background-color: black;
+    color: white;
+    font-size: calc(var(--cg-height) / 8);
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+.clock-wrap span {
+    vertical-align: top;
+    line-height: calc(var(--cg-height) / 8);
+}
+
+.clock .active {
+    background-color: rgb(59, 122, 59)
+}
+
+.clock .low, .clock .active.low {
+    background-color: rgb(134, 61, 61)
+}
+
+.clock .midstep .colon {
+    opacity: 70%;
 }
 
 #movelist {

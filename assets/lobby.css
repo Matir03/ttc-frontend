@@ -4,8 +4,8 @@
     height: calc(100vh - 50px);
     grid-template: 
         'incoming incoming games  games' 50%
-        'outgoing  players players chat' calc(50% - 80px)
-        'seekmaker players players chat' 80px
+        'outgoing  players players chat' 25%
+        'seekmaker players players chat' 25%
         / 2fr 1fr 1fr 2fr;
 }
 
@@ -85,19 +85,52 @@
 
 #seekmaker {
     grid-area: seekmaker;
+    background-color: black;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+}
+
+#seekmaker .times {
+    display: grid;
+    grid-template: 
+        'time-white . time-black'
+        / 1fr 10px 1fr; 
+}
+
+#seekmaker .time {
+    border: 2px solid #dddddd;
+    border-radius: 5px;
+}
+
+#seekmaker #time-white {
+    grid-area: time-white;
+}
+
+#seekmaker #time-black {
+    grid-area: time-black;
 }
 
 #seekmaker div {
-    display: flex;
-    justify-content: stretch;
+    padding-top: 5px;
+    padding-bottom: 5px;
+}
+
+#seekmaker span,
+#seekmaker label {
     height: 20px;
     color: white;
     font-size: large;
+    padding-left: 5px;
+    padding-right: 5px;
+}
+
+#seekmaker input[type="number"] {
+    width: 30px
 }
 
 #seekmaker button {
-    width: 100%;
-    height: calc(100% - 20px);
+    height: 100%;
 }
 
 .lobby #chat {

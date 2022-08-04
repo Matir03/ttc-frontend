@@ -6,7 +6,10 @@ export const colors: Array<SeekColor> = ["White", "Black", "Random"];
 export interface Seek {
     id: number;
     player: string;
+    opponent: string;
     color: SeekColor;
+    timeWhite: TimeControl;
+    timeBlack: TimeControl;
 }
 
 export interface ChatMessage {
@@ -77,10 +80,15 @@ export class MappedLobbyState {
         this.chat.push(msg);
     }
 
-    toLobbyState(): LobbyState {
+    toLobbyState(pname = ""): LobbyState {
         return {
             seeks: Array.from(this.seeks,
-                ([id, seek]) => seek),
+                ([id, seek]) => seek)
+                .filter(seek => 
+                    pname === "" ||
+                    seek.player === pname || 
+                    seek.opponent === pname ||
+                    seek.opponent === ""), 
             games: Array.from(this.games,
                 ([id, game]) => game),
             players: Array.from(this.players,
@@ -96,11 +104,13 @@ export interface Action {
 
 export class MakeSeek implements Action {
     kind = "MakeSeek";
-    color: SeekColor;
 
-    constructor(color: SeekColor) {
-        this.color = color;
-    }
+    constructor(
+        public color: SeekColor,
+        public timeWhite: TimeControl,
+        public timeBlack: TimeControl,
+        public opponent: string
+    ) {}
 }
 
 export class DeleteSeek implements Action {
@@ -166,14 +176,41 @@ export class WatchGame implements Action {
     }
 }
 
+export class WatchPlayer implements Action {
+    kind = "WatchPlayer";
+    name: string;
+
+    constructor(name: string) {
+        this.name = name;
+    }
+}
+
+export interface TimeControl {
+    base: number;
+    incr: number;
+}
+
+export interface ClockInfo {
+    white: TimeControl;
+    black: TimeControl;
+
+    timeleft: number[];
+    timestamp: number;
+}
+
 export interface ReceivedGameState {
     white: string;
     black: string;
 
     game: Move[];
+
+    clockInfo: ClockInfo;
+    
     chat: Chat;
 
     drawOffer: string;
+    
+    ended: boolean;
 }
 
 export class MakeMove implements Action {
@@ -189,10 +226,12 @@ export class PerformMove implements Action {
     kind = "PerformMove";
     move: Move;
     color: Color;
+    timestamp: number;
 
-    constructor(move: Move, color: Color) {
+    constructor(move: Move, color: Color, timestamp: number) {
         this.move = move;
         this.color = color;
+        this.timestamp = timestamp;
     }
 }
 
@@ -225,3 +264,6 @@ export interface ClientToServerEvents {
     lobby_action: (action: Action) => void;
     game_action:  (action: Action)  => void;
 }
+
+
+

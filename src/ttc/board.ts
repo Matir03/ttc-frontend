@@ -727,7 +727,7 @@ export class Board {
 
             return this.isLegal({
                 orig: toKey(coord),
-                target: roles[0][0] as ttc.Role,
+                target: charToPiece(roles[0][0]).role,
                 blinks
             });
         })

@@ -1,6 +1,6 @@
 import Chessground from './chessground';
 import { ReceivedGameState, Chat, Action, ChatAction,
-    MakeMove, PerformMove, ChatEvent, TaggedAction, MakeSeek } from './commontypes';
+    MakeMove, PerformMove, ChatEvent, TaggedAction, ClockInfo } from './commontypes';
 import { Move } from './ttc/types';
 import { attributesModule, classModule, eventListenersModule, h, 
     init, propsModule, styleModule, toVNode, VNode } from 'snabbdom';
@@ -11,6 +11,7 @@ import { opposite, pieceToChar, charToPiece } from './chessground/util';
 import { unselect } from './chessground/board';
 import { Game } from './ttc/game';
 import { toCoord, toKey } from './ttc/board';
+import { timeStamp } from 'console';
 
 interface UIElement {
     vnode: VNode;
@@ -96,6 +97,8 @@ export class GameClient {
     selNode: VNode;
     selecting: boolean;
 
+    spectating: boolean;
+    flipped: boolean;
     color: Color;
     other: Color;
 
@@ -105,6 +108,9 @@ export class GameClient {
     chat: Chat;
     chatUpdated: boolean;
     
+    clockInfo: ClockInfo;
+    clockInterval: NodeJS.Timer;
+
     status: string;
     drawOffered: boolean;
 
@@ -118,12 +124,32 @@ export class GameClient {
         this.emit = action => {
             switch(action.kind) {
                 case "MakeMove":
-                    this.game.makeMove((action as MakeMove).move);
                     this.drawOffered = false;
+
+                    if(this.clockInfo[this.color]) {
+                        const timestamp = Date.now();
+
+                        this.clockInfo.timeleft.push(
+                            this.clockInfo.timeleft.at(-2) +
+                            this.clockInfo[this.color].incr -
+                            (timestamp - this.clockInfo.timestamp));
+
+                        this.clockInfo.timestamp = timestamp;
+                    }
+
+                    this.game.makeMove((action as MakeMove).move);
+
                     break;
 
                 case "Decline Draw":
                     this.drawOffered = false;
+                    break;
+
+                case "Flip Board":
+                    this.flipped = !this.flipped;
+                    this.syncCg();
+                    this.updateView();
+                    return;
             }
 
             this.updateView();
@@ -210,13 +236,19 @@ export class GameClient {
         this.status = 'waiting';
         this.drawOffered = false;
 
+        this.clockInfo = undefined;
+        this.clockInterval = undefined;
+
         this.ui = [
             {vnode: h('div'), update: () => this.blinkPanel('white')},
             {vnode: h('div'), update: () => this.blinkPanel('black')},
+            {vnode: h('div'), update: () => this.clock('white')},
+            {vnode: h('div'), update: () => this.clock('black')},
             {vnode: h('div'), update: () => this.movelist()},
             {vnode: h('div'), update: () => this.controls()},
             {vnode: h('div'), update: () => this.chatbox()},
         ];
+
     }
 
     drawSel() {
@@ -282,6 +314,7 @@ export class GameClient {
 
     onSelect(key: Key) {
         if(this.game.ply !== this.game.moves.length ||
+            this.spectating ||
             this.cg.state.turnColor === this.other ||
             (this.cg.state.selected && !this.selected)) return;
 
@@ -380,7 +413,7 @@ export class GameClient {
 
         this.cg.set({
             movable: {
-                color: this.color,
+                color: this.spectating ? undefined : this.color,
 
                 dests: coord =>  
                     (this.game.board.isEmpty(toKey(coord)) ?
@@ -396,18 +429,34 @@ export class GameClient {
     }
 
     setState(state: ReceivedGameState) {
-        this.color = state.white === this.pname?
-            "white" : "black";
+        if(this.pname === state.white ||
+            this.pname === state.black) {
+            this.spectating = false;
 
-        this.other = opposite(this.color);
+            this.color = state.white === this.pname?
+                "white" : "black";
+
+            this.other = opposite(this.color);
+            
+            this.flipped = this.color === 'black';
+        } else {
+            this.spectating = true;
+            this.color = null;
+            this.other = null;
+            this.flipped = false;
+        }
 
         this.game = new Game(state.game);
 
         this.chat = state.chat;
         this.chatUpdated = true;
 
+        this.clockInfo = state.clockInfo;
+
         this.drawOffered = state.drawOffer === this.pname;
-        this.status = "playing";
+
+        this.status = state.ended ? 
+            "ended" : "playing";
 
         this.syncCg();
     }
@@ -425,10 +474,10 @@ export class GameClient {
     syncCg() {
         this.cg.set({
             fen: "8/8/8/8/8/8/8/8",
-            orientation: this.color,
+            orientation: this.flipped ? "black" : "white",
             turnColor: this.game.board.turn,
             movable: {
-                color: this.color,
+                color: this.spectating ? undefined : this.color,
             }
         });
 
@@ -468,8 +517,22 @@ export class GameClient {
         switch(event.kind) {
             case "PerformMove":
                 const color = (event as PerformMove).color;
-
                 const move = (event as PerformMove).move;
+                const timestamp = (event as PerformMove).timestamp;
+
+                if(this.clockInfo[color]) {
+                    if(color === this.color) {
+                        this.clockInfo.timeleft[-1] += 
+                            this.clockInfo.timestamp - timestamp;
+                    } else {
+                        this.clockInfo.timeleft.push(
+                            this.clockInfo.timeleft.at(-2) +
+                            this.clockInfo[color].incr -
+                            (timestamp - this.clockInfo.timestamp));
+                    }
+                    
+                    this.clockInfo.timestamp = timestamp;
+                }
 
                 if(color === this.color) return;
 
@@ -529,6 +592,7 @@ export class GameClient {
                 console.log("Unknown event type: " + event.kind);
         }
 
+        this.syncCg();
         this.updateView();
     }
 
@@ -582,11 +646,88 @@ export class GameClient {
         return h('div', {class: {
             ['blink'] : true,
             [`blink-${color}`] : true, 
-            [`blink-top`] : color !== this.color,
-            [`blink-bot`] : color === this.color,
+            [`blink-top`] : this.flipped ? 
+                color === 'white' : 
+                color === 'black',
+            [`blink-bot`] : this.flipped ? 
+                color === 'black' : 
+                color === 'white',
         }}, ['pawn', 'knight', 'bishop', 'rook', 'queen']
             .map(pieceTag)
         )
+    }
+
+    clock(color: Color): VNode {
+        if(!this.clockInfo[color]) return h('div');
+
+        const ply = this.game.ply;
+        const turnColor = this.game.board.turn;
+        const lastPly = ply + (turnColor === color ? 0 : 1);
+
+        let clockTime = this.clockInfo.timeleft[lastPly];
+
+        if(ply === this.game.moves.length 
+            && turnColor === color
+            && this.status !== "ended") {
+            clockTime -= Date.now() - this.clockInfo.timestamp;
+        }
+
+        if(clockTime < 0) clockTime = 0;
+
+        const low = clockTime < Math.max(20000,
+            this.clockInfo[color].base * 0.1 -
+            this.clockInfo[color].incr * 10);
+
+        if(!this.clockInterval && this.status === "playing") {
+            this.clockInterval = setInterval(() => {
+                this.ui[2].vnode = 
+                    patch(this.ui[2].vnode, this.ui[2].update());
+                this.ui[3].vnode = 
+                    patch(this.ui[3].vnode, this.ui[3].update());
+            }, 50);
+        }
+
+        if(this.status === "ended") {
+            clearInterval(this.clockInterval);
+            this.clockInterval = null;
+        }
+
+        const hrs = Math.floor(clockTime / 3600000);
+        const mins = Math.floor((clockTime % 3600000) / 60000);
+        const secs = Math.floor((clockTime % 60000) / 1000);
+        const ms = Math.floor((clockTime % 1000) / 100);
+        const active = this.status === "playing" &&
+            ply === this.game.moves.length &&
+            turnColor === color;
+        const blink = !low && active && ms < 5; 
+
+        return h('div', {class: {
+            ['clock'] : true,
+            [`clock-${color}`] : true,
+            ['clock-top'] : this.flipped ?
+                color === 'white' :
+                color === 'black',
+            ['clock-bot'] : this.flipped ?
+                color === 'black' :
+                color === 'white',
+        }}, [h('div.clock-wrap', {class: {
+            'active': active,
+            'midstep': blink,
+            'low': low
+        }}, (hrs ? [
+                h('span', hrs),
+                h('span.colon', ':'),
+            ] : []).concat([
+                h('span', hrs ? 
+                    mins.toString().padStart(2, '0') : 
+                    mins),
+                h('span.colon', ':'),
+                h('span', secs.toString().padStart(2, '0')),
+            ], low ? [
+                h('span', '.'),
+                h('span', ms)
+            ] : [])
+        )]);
     }
 
     movelist() {
@@ -619,7 +760,10 @@ export class GameClient {
         let botLeft: string,
             botRight: string;
 
-        if(this.status === 'ended') {
+        if(this.spectating) {
+            botLeft = 'Flip Board';
+            botRight = 'Leave Game';
+        } else if(this.status === 'ended') {
             botLeft = 'Exit Game';
             botRight = 'Rematch';  
         } else {
@@ -714,6 +858,8 @@ export class GameClient {
                 this.jumpTo(this.game.moves.length);
             }
         }
+
+        
         
         return h('div#root.game', {
             hook: {
