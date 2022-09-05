@@ -350,10 +350,10 @@ export class GameClient {
 
                     const maybePawn: Role[] = 
                         key[0] === this.selected[0] &&
-                        (this. color === 'white' ? 
+                        (this.color === 'white' ? 
                             key[1] < this.selected[1] :
                             key[1] > this.selected[1]) &&
-                        this.selected[1] !== psq ?
+                        this.selected !== psq ?
                         ['pawn'] : [];
 
                     const orig = this.selected;

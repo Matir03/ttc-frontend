@@ -446,8 +446,8 @@ export class Board {
                 (piece.role !== 'bishop' ||
                  sameColor(move.orig, move.dest)) &&
                 !move.blinks.some(key => sameKey(key, move.dest)) &&
-                (!move.target || 
-                 (piece.role === 'pawn' &&
+                ((!move.target && move.orig[1] !== prom)|| 
+                 ( move.orig[1] === prom && piece.role === 'pawn' &&
                   (['queen', 'rook', 'knight'].includes(move.target) ||
                    (move.target === 'pawn' && 
                     move.orig[0] === move.dest[0] &&
@@ -531,10 +531,10 @@ export class Board {
                 }
             }
 
-            if(move.orig === [8, r]) 
+            if(sameKey(move.orig, [8, r])) 
                 this.castling.short[this.turn] = false;
         
-            if(move.orig === [1, r]) 
+            if(sameKey(move.orig, [1, r])) 
                 this.castling.long[this.turn] = false;
 
             if(piece.role === 'pawn' && 
@@ -588,10 +588,10 @@ export class Board {
 
             this.blink(key, {role: piece.role, color: piece.color});
             
-            if(key === [8, r]) 
+            if(sameKey(key, [8, r])) 
                 this.castling.short[this.turn] = false;
         
-            if(key === [1, r]) 
+            if(sameKey(key, [1, r])) 
                 this.castling.long[this.turn] = false; 
         });
 
